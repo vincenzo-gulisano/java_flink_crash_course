@@ -15,9 +15,9 @@ public final class ManualThreadPipeline {
     private static final String END_OF_STREAM = "__END__"; // Do you know what "private static final" means for a variable?
     private static final double HOT_THRESHOLD = 22.0;
     private static final int EVENT_COUNT = 18;
-    private static final long JOIN_TIMEOUT_MILLIS = 10000L;
+    private static final long JOIN_TIMEOUT_MILLIS = 20000L;
     private static final long PRODUCER_SLEEP_MILLIS = 40L;
-    private static final long AGGREGATOR_SLEEP_MILLIS = 40L;
+    private static final long AGGREGATOR_SLEEP_MILLIS = 2000L;
 
     /**
      * Utility class: this private constructor prevents accidental instantiation.
