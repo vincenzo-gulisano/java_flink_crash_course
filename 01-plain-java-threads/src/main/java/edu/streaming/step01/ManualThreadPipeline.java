@@ -12,26 +12,26 @@ import java.util.concurrent.LinkedBlockingQueue;
  * Demonstrates a streaming pipeline built manually with Java threads and blocking queues.
  */
 public final class ManualThreadPipeline {
-    private static final String END_OF_STREAM = "__END__";
+    private static final String END_OF_STREAM = "__END__"; // Do you know what "private static final" means for a variable?
     private static final double HOT_THRESHOLD = 22.0;
     private static final int EVENT_COUNT = 18;
-    private static final long JOIN_TIMEOUT_MILLIS = 1_500L;
+    private static final long JOIN_TIMEOUT_MILLIS = 10000L;
 
     /**
      * Utility class: this private constructor prevents accidental instantiation.
      */
-    private ManualThreadPipeline() {
+    private ManualThreadPipeline() { // Why would we want to prevent instantiation of this class?
     }
 
     /**
      * Builds the queues and threads, starts each pipeline stage, and reports whether any stage got stuck.
      */
     public static void main(String[] args) throws InterruptedException {
-        BlockingQueue<String> rawEvents = new LinkedBlockingQueue<>();
-        BlockingQueue<Reading> parsedReadings = new LinkedBlockingQueue<>();
+        BlockingQueue<String> rawEvents = new LinkedBlockingQueue<>(); // Do you know what "<String>" means here?
+        BlockingQueue<Reading> parsedReadings = new LinkedBlockingQueue<>(); // Do you know why we use a BlockingQueue here instead of a regular Queue or List?
         BlockingQueue<Reading> hotReadings = new LinkedBlockingQueue<>();
 
-        Thread producer = new Thread(() -> produce(rawEvents), "producer");
+        Thread producer = new Thread(() -> produce(rawEvents), "producer"); // Do you know what "()-> produce(rawEvents)" means here?
         Thread parser = new Thread(() -> parse(rawEvents, parsedReadings), "parser");
         Thread filter = new Thread(() -> filterHotReadings(parsedReadings, hotReadings), "filter");
         Thread aggregator = new Thread(() -> aggregateByRoom(hotReadings), "aggregator");
@@ -84,7 +84,7 @@ public final class ManualThreadPipeline {
     /**
      * Checks both Maven-friendly system properties and direct command-line flags for skipped stages.
      */
-    private static boolean wasSkipped(String stageName, String[] args) {
+    private static boolean wasSkipped(String stageName, String[] args) { // Do you know what private static means for a method?
         if (stageName.equals(System.getProperty("skipStage", ""))) {
             return true;
         }
@@ -164,7 +164,7 @@ public final class ManualThreadPipeline {
      * Aggregator stage: maintains a running count and average temperature for each room.
      */
     private static void aggregateByRoom(BlockingQueue<Reading> input) {
-        Map<String, RoomStats> statsByRoom = new HashMap<>();
+        Map<String, RoomStats> statsByRoom = new HashMap<>(); // Do you know what "<String, RoomStats>" means here?
 
         try {
             while (true) {
@@ -201,7 +201,7 @@ public final class ManualThreadPipeline {
     /**
      * A parsed temperature reading passed between pipeline stages after the parser.
      */
-    private static final class Reading {
+    private static final class Reading { // Do you know what private static final means for a class?
         private final String room;
         private final long timestampMillis;
         private final double temperatureCelsius;
