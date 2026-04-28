@@ -16,6 +16,8 @@ public final class ManualThreadPipeline {
     private static final double HOT_THRESHOLD = 22.0;
     private static final int EVENT_COUNT = 18;
     private static final long JOIN_TIMEOUT_MILLIS = 10000L;
+    private static final long PRODUCER_SLEEP_MILLIS = 40L;
+    private static final long AGGREGATOR_SLEEP_MILLIS = 40L;
 
     /**
      * Utility class: this private constructor prevents accidental instantiation.
@@ -107,7 +109,7 @@ public final class ManualThreadPipeline {
                 String event = sampleEvent(i);
                 System.out.printf("[producer]   %s%n", event);
                 output.put(event);
-                Thread.sleep(40L);
+                Thread.sleep(PRODUCER_SLEEP_MILLIS);
             }
             output.put(END_OF_STREAM);
         } catch (InterruptedException e) {
@@ -181,6 +183,7 @@ public final class ManualThreadPipeline {
                         reading.room,
                         stats.count,
                         stats.average());
+                Thread.sleep(AGGREGATOR_SLEEP_MILLIS);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
