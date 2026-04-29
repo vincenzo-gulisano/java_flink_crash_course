@@ -10,9 +10,15 @@ client builds JobGraph -> JobManager coordinates -> TaskManagers run the operato
 
 The important new idea is that Flink serializes user functions and ships them to workers. Runtime-only objects should be created in `open(...)` and cleaned in `close()`.
 
+The query is still the same one from steps 01-03:
+
+```text
+current-time readings -> keep hot readings -> average by room in 20-second windows every 5 seconds
+```
+
 ## Improvement Over Step 03
 
-The job logic is almost the same, but the execution story changes. We can run locally for development, then submit the same class to a Flink cluster.
+The job logic is almost the same as step 03, but the execution story changes. We can run locally for development, then submit the same class to a Flink cluster.
 
 ## Tweak / Complication
 

@@ -1,18 +1,27 @@
 package edu.streaming.step03;
 
-import java.util.Arrays;
-import java.util.List;
+import java.time.Duration;
 import java.util.Locale;
 import org.apache.flink.api.common.RuntimeExecutionMode;
+import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.api.java.tuple.Tuple5;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
+import org.apache.flink.streaming.api.windowing.assigners.SlidingEventTimeWindows;
+import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
+import org.apache.flink.util.Collector;
 
 @SuppressWarnings("deprecation")
 public final class FlinkTupleLocalPipeline {
     private static final double HOT_THRESHOLD = 22.0;
+    private static final int EVENT_COUNT = 18;
+    private static final long PRODUCER_SLEEP_MILLIS = 40L;
+    private static final long WINDOW_SIZE_MILLIS = 20_000L;
+    private static final long WINDOW_SLIDE_MILLIS = 5_000L;
 
     private FlinkTupleLocalPipeline() {
     }
@@ -23,18 +32,28 @@ public final class FlinkTupleLocalPipeline {
         env.setParallelism(1);
 
         DataStream<Tuple3<String, Long, Double>> readings = env
-                .fromCollection(sampleEvents())
+                .fromSequence(1, EVENT_COUNT)
+                .name("event-counter")
+                .setParallelism(1)
+                .map(FlinkTupleLocalPipeline::sampleEvent)
                 .name("sensor-csv-source")
                 .map(new ParseReading())
-                .name("parse-to-tuple");
+                .name("parse-to-tuple")
+                .assignTimestampsAndWatermarks(
+                        WatermarkStrategy
+                                .<Tuple3<String, Long, Double>>forMonotonousTimestamps()
+                                .withTimestampAssigner((reading, previousTimestamp) -> reading.f1))
+                .name("use-event-timestamp");
 
         readings
                 .filter(reading -> reading.f2 >= HOT_THRESHOLD)
                 .name("keep-hot-readings")
                 .keyBy(reading -> reading.f0)
-                .countWindow(3)
-                .aggregate(new AverageTemperature())
-                .name("average-every-three-hot-readings")
+                .window(SlidingEventTimeWindows.of(
+                        Duration.ofMillis(WINDOW_SIZE_MILLIS),
+                        Duration.ofMillis(WINDOW_SLIDE_MILLIS)))
+                .aggregate(new AverageTemperature(), new AddWindowInfo())
+                .name("average-hot-readings-by-window")
                 .map(FlinkTupleLocalPipeline::formatAverage)
                 .name("format-average")
                 .print()
@@ -43,13 +62,15 @@ public final class FlinkTupleLocalPipeline {
         env.execute("Step 03 - Flink pipeline with tuples in local mode");
     }
 
-    private static String formatAverage(Tuple3<String, Long, Double> average) {
+    private static String formatAverage(Tuple5<String, Long, Long, Long, Double> average) {
         return String.format(
                 Locale.US,
-                "room=%s average-of-%d-hot-readings=%.1f C",
+                "room=%s window=[%s,%s) count=%d average=%.1f C",
                 average.f0,
-                average.f1,
-                average.f2);
+                formatTimestamp(average.f1),
+                formatTimestamp(average.f2),
+                average.f3,
+                average.f4);
     }
 
     public static final class ParseReading implements MapFunction<String, Tuple3<String, Long, Double>> {
@@ -101,23 +122,43 @@ public final class FlinkTupleLocalPipeline {
         }
     }
 
-    private static List<String> sampleEvents() {
-        return Arrays.asList(
-                "Lab,1714300000000,21.2",
-                "Kitchen,1714300001000,23.0",
-                "Office,1714300002000,22.5",
-                "Lab,1714300003000,24.1",
-                "Studio,1714300004000,20.9",
-                "Kitchen,1714300005000,24.0",
-                "Office,1714300006000,23.2",
-                "Lab,1714300007000,22.8",
-                "Studio,1714300008000,22.4",
-                "Kitchen,1714300009000,21.9",
-                "Office,1714300010000,24.0",
-                "Lab,1714300011000,23.7",
-                "Studio,1714300012000,23.5",
-                "Kitchen,1714300013000,25.0",
-                "Office,1714300014000,21.0",
-                "Studio,1714300015000,24.2");
+    public static final class AddWindowInfo
+            extends ProcessWindowFunction<
+                    Tuple3<String, Long, Double>,
+                    Tuple5<String, Long, Long, Long, Double>,
+                    String,
+                    TimeWindow> {
+
+        @Override
+        public void process(
+                String room,
+                Context context,
+                Iterable<Tuple3<String, Long, Double>> averages,
+                Collector<Tuple5<String, Long, Long, Long, Double>> out) {
+            Tuple3<String, Long, Double> average = averages.iterator().next();
+            out.collect(Tuple5.of(room, context.window().getStart(), context.window().getEnd(), average.f1, average.f2));
+        }
+    }
+
+    private static String sampleEvent(long index) {
+        sleep(PRODUCER_SLEEP_MILLIS);
+        String[] rooms = {"lab", "kitchen", "office"};
+        String room = rooms[(int) (index % rooms.length)];
+        long timestampMillis = System.currentTimeMillis();
+        double temperature = 20.2 + (index % 5) * 0.7 + (index % 4 == 0 ? 2.0 : 0.0);
+        return String.format(Locale.US, "%s,%d,%.1f", room, timestampMillis, temperature);
+    }
+
+    private static String formatTimestamp(long timestampMillis) {
+        return String.format(Locale.US, "%tT", timestampMillis);
+    }
+
+    private static void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while producing sample events", e);
+        }
     }
 }

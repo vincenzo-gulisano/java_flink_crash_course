@@ -8,6 +8,12 @@ All examples use the same story: temperature readings from rooms, encoded first 
 room,timestampMillis,temperatureCelsius
 ```
 
+The shared streaming query is:
+
+```text
+current-time readings -> keep hot readings -> average by room in 20-second windows every 5 seconds
+```
+
 The examples are intentionally small and build on each other:
 
 1. `01-plain-java-threads`: a hand-made streaming pipeline with Java threads and queues.

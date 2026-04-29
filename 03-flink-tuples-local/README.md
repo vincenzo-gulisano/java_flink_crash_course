@@ -16,11 +16,13 @@ f1 = timestampMillis
 f2 = temperatureCelsius
 ```
 
-After that, the pipeline works with typed values instead of repeatedly splitting strings. It keeps hot readings, groups them by room, and prints the average of every three hot readings per room.
+After that, the pipeline works with typed values instead of repeatedly splitting strings. It keeps hot readings, groups them by room, and prints the average temperature in 20-second sliding windows that advance every 5 seconds.
 
 ## Improvement Over Step 02
 
 The code is less fragile. A temperature is a `Double`, a timestamp is a `Long`, and the parser is close to the source instead of scattered through the whole pipeline.
+
+This version also makes event time more explicit: Flink reads the timestamp from `f1` and uses it to decide when each sliding window is complete.
 
 ## Tweak / Complication
 
