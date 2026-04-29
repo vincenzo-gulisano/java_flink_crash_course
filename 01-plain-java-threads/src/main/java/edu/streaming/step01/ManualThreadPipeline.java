@@ -16,8 +16,10 @@ public final class ManualThreadPipeline {
     private static final double HOT_THRESHOLD = 22.0;
     private static final int EVENT_COUNT = 18;
     private static final long JOIN_TIMEOUT_MILLIS = 20000L;
-    private static final long PRODUCER_SLEEP_MILLIS = 40L;
-    private static final long AGGREGATOR_SLEEP_MILLIS = 2000L;
+    private static final long PRODUCER_SLEEP_MILLIS = 1000L;
+    private static final long AGGREGATOR_SLEEP_MILLIS = 20L;
+    private static final long WINDOW_SIZE_MILLIS = 5_000L;
+    private static final long WINDOW_SLIDE_MILLIS = 2_000L;
 
     /**
      * Utility class: this private constructor prevents accidental instantiation.
@@ -163,26 +165,31 @@ public final class ManualThreadPipeline {
     }
 
     /**
-     * Aggregator stage: maintains a running count and average temperature for each room.
+     * Aggregator stage: maintains sliding-window statistics for each room.
      */
     private static void aggregateByRoom(BlockingQueue<Reading> input) {
-        Map<String, RoomStats> statsByRoom = new HashMap<>(); // Do you know what "<String, RoomStats>" means here?
+        Map<String, Map<Long, RoomStats>> statsByRoomAndWindow = new HashMap<>(); // Do you know what "<String, Map<Long, RoomStats>>" means here?
 
         try {
             while (true) {
                 Reading reading = input.take();
                 if (reading.endOfStream) {
+                    emitAndClearRemainingWindows(statsByRoomAndWindow);
                     return;
                 }
 
-                RoomStats stats = statsByRoom.computeIfAbsent(reading.room, ignored -> new RoomStats());
-                stats.add(reading.temperatureCelsius);
-                System.out.printf(
-                        Locale.US,
-                        "[aggregator] room=%s count=%d average=%.1f C%n",
-                        reading.room,
-                        stats.count,
-                        stats.average());
+                Map<Long, RoomStats> statsByWindow =
+                        statsByRoomAndWindow.computeIfAbsent(reading.room, ignored -> new HashMap<>());
+
+                long lastWindowStart = alignToWindowSlide(reading.timestampMillis);
+                for (long windowStart = lastWindowStart;
+                        windowStart > reading.timestampMillis - WINDOW_SIZE_MILLIS;
+                        windowStart -= WINDOW_SLIDE_MILLIS) {
+                    RoomStats stats = statsByWindow.computeIfAbsent(windowStart, ignored -> new RoomStats());
+                    stats.add(reading.temperatureCelsius);
+                }
+
+                expireClosedWindows(statsByRoomAndWindow, reading.timestampMillis);
                 Thread.sleep(AGGREGATOR_SLEEP_MILLIS);
             }
         } catch (InterruptedException e) {
@@ -191,12 +198,73 @@ public final class ManualThreadPipeline {
     }
 
     /**
-     * Creates deterministic sample input so every run of the demo tells the same story.
+     * Aligns a timestamp to the most recent sliding-window start time.
+     */
+    private static long alignToWindowSlide(long timestampMillis) {
+        return timestampMillis - Math.floorMod(timestampMillis, WINDOW_SLIDE_MILLIS);
+    }
+
+    /**
+     * Emits and removes windows that are already complete according to the latest event timestamp.
+     */
+    private static void expireClosedWindows(
+            Map<String, Map<Long, RoomStats>> statsByRoomAndWindow,
+            long latestTimestampMillis) {
+        for (Map.Entry<String, Map<Long, RoomStats>> roomEntry : statsByRoomAndWindow.entrySet()) {
+            String room = roomEntry.getKey();
+            Map<Long, RoomStats> statsByWindow = roomEntry.getValue();
+            statsByWindow.entrySet().removeIf(entry -> {
+                long windowStart = entry.getKey();
+                boolean windowExpired = windowStart + WINDOW_SIZE_MILLIS <= latestTimestampMillis;
+                if (windowExpired) {
+                    printWindowAverage(room, windowStart, entry.getValue());
+                }
+                return windowExpired;
+            });
+        }
+    }
+
+    /**
+     * Emits all remaining windows when the producer tells us the finite demo stream is complete.
+     */
+    private static void emitAndClearRemainingWindows(Map<String, Map<Long, RoomStats>> statsByRoomAndWindow) {
+        for (Map.Entry<String, Map<Long, RoomStats>> roomEntry : statsByRoomAndWindow.entrySet()) {
+            String room = roomEntry.getKey();
+            for (Map.Entry<Long, RoomStats> windowEntry : roomEntry.getValue().entrySet()) {
+                printWindowAverage(room, windowEntry.getKey(), windowEntry.getValue());
+            }
+            roomEntry.getValue().clear();
+        }
+    }
+
+    /**
+     * Prints the final average for a window just before that window is removed.
+     */
+    private static void printWindowAverage(String room, long windowStart, RoomStats stats) {
+        System.out.printf(
+                Locale.US,
+                "[aggregator] room=%s window=[%s,%s) count=%d average=%.1f C%n",
+                room,
+                formatTimestamp(windowStart),
+                formatTimestamp(windowStart + WINDOW_SIZE_MILLIS),
+                stats.count,
+                stats.average());
+    }
+
+    /**
+     * Formats timestamps as local wall-clock time so the window boundaries are readable.
+     */
+    private static String formatTimestamp(long timestampMillis) {
+        return String.format(Locale.US, "%tT", timestampMillis);
+    }
+
+    /**
+     * Creates sample input and stamps each event with the current system time.
      */
     private static String sampleEvent(int index) {
         String[] rooms = {"lab", "kitchen", "office"};
         String room = rooms[index % rooms.length];
-        long timestampMillis = 1_714_300_000_000L + index * 1_000L;
+        long timestampMillis = System.currentTimeMillis();
         double temperature = 20.2 + (index % 5) * 0.7 + (index % 4 == 0 ? 2.0 : 0.0);
         return String.format(Locale.US, "%s,%d,%.1f", room, timestampMillis, temperature);
     }
@@ -257,7 +325,7 @@ public final class ManualThreadPipeline {
     }
 
     /**
-     * Mutable aggregation state for one room.
+     * Mutable aggregation state for one room in one sliding window.
      */
     private static final class RoomStats {
         private long count;

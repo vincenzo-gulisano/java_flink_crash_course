@@ -14,7 +14,7 @@ The data is a tiny stream of temperature readings, encoded as strings:
 room,timestampMillis,temperatureCelsius
 ```
 
-The program parses each string, keeps only hot readings, and prints a running average per room.
+The program parses each string, keeps only hot readings, and prints sliding-window averages per room. The windows are 20 seconds long and start every 5 seconds.
 
 ## Improvement Target
 
@@ -64,9 +64,9 @@ Good classroom prompt: "The producer is creating events, so why does the aggrega
 
 **Answer:** `private` means the method is only callable inside this class. `static` means the method belongs to the class itself, so we can call it without creating an object first.
 
-**Question:** Do you know what `<String, RoomStats>` means here?
+**Question:** Do you know what `<String, Map<Long, RoomStats>>` means here?
 
-**Answer:** It describes the two generic types used by the `Map`. The key type is `String`, which is the room name. The value type is `RoomStats`, which stores the count and sum for that room.
+**Answer:** It describes the generic types used by the outer `Map`. The key type is `String`, which is the room name. The value type is another `Map`: its key is a `Long` window start timestamp, and its value is `RoomStats`, which stores the count and sum for that room in that specific window.
 
 **Question:** Do you know what `private static final` means for a class?
 
