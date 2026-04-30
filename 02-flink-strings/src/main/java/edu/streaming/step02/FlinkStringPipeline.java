@@ -15,9 +15,9 @@ import org.apache.flink.util.Collector;
 public final class FlinkStringPipeline {
     private static final double HOT_THRESHOLD = 22.0;
     private static final int EVENT_COUNT = 18;
-    private static final long PRODUCER_SLEEP_MILLIS = 40L;
-    private static final long WINDOW_SIZE_MILLIS = 20_000L;
-    private static final long WINDOW_SLIDE_MILLIS = 5_000L;
+    private static final long PRODUCER_SLEEP_MILLIS = 1000L;
+    private static final long WINDOW_SIZE_MILLIS = 5_000L;
+    private static final long WINDOW_SLIDE_MILLIS = 2_000L;
 
     private FlinkStringPipeline() {
     }
@@ -44,7 +44,7 @@ public final class FlinkStringPipeline {
                 .name("use-event-timestamp")
                 .filter(FlinkStringPipeline::isHot)
                 .name("keep-hot-readings")
-                .keyBy(FlinkStringPipeline::roomFrom)
+                .keyBy(FlinkStringPipeline::roomFrom) // Do you understand why there's a key-by here?
                 .window(SlidingEventTimeWindows.of(
                         Duration.ofMillis(WINDOW_SIZE_MILLIS),
                         Duration.ofMillis(WINDOW_SLIDE_MILLIS)))
