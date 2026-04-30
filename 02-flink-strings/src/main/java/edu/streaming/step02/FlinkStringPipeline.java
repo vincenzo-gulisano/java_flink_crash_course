@@ -114,7 +114,7 @@ public final class FlinkStringPipeline {
         String room = rooms[(int) (index % rooms.length)];
         long timestampMillis = System.currentTimeMillis();
         double temperature = 20.2 + (index % 5) * 0.7 + (index % 4 == 0 ? 2.0 : 0.0);
-        return String.format(Locale.US, "%s,%d,%.1f", room, timestampMillis, temperature).replace('.', ',');
+        return String.format(Locale.US, "%s,%d,%.1f", room, timestampMillis, temperature);//.replace('.', ',');
     }
 
     private static String formatAverage(
