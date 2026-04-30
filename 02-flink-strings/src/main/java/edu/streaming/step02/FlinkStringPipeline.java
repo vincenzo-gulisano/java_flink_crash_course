@@ -18,6 +18,7 @@ public final class FlinkStringPipeline {
     private static final long PRODUCER_SLEEP_MILLIS = 1000L;
     private static final long WINDOW_SIZE_MILLIS = 5_000L;
     private static final long WINDOW_SLIDE_MILLIS = 2_000L;
+    private static final int OPERATOR_PARALLELISM = 4;
 
     private FlinkStringPipeline() {
     }
@@ -25,33 +26,39 @@ public final class FlinkStringPipeline {
     public static void main(String[] args) throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setRuntimeMode(RuntimeExecutionMode.STREAMING);
-        env.setParallelism(1);
+        env.setParallelism(OPERATOR_PARALLELISM);
 
         DataStream<String> rawEvents = env
                 .fromSequence(1, EVENT_COUNT)
                 .name("event-counter")
-                .setParallelism(1)
+                .setParallelism(OPERATOR_PARALLELISM)
                 .map(FlinkStringPipeline::sampleEvent)
-                .name("sensor-csv-source");
+                .name("sensor-csv-source")
+                .setParallelism(OPERATOR_PARALLELISM);
 
         rawEvents
                 .map(FlinkStringPipeline::normalizeRoomName)
                 .name("normalize-room-name")
+                .setParallelism(OPERATOR_PARALLELISM)
                 .assignTimestampsAndWatermarks(
                         WatermarkStrategy
                                 .<String>forMonotonousTimestamps()
                                 .withTimestampAssigner((event, previousTimestamp) -> timestampFrom(event)))
                 .name("use-event-timestamp")
+                .setParallelism(OPERATOR_PARALLELISM)
                 .filter(FlinkStringPipeline::isHot)
                 .name("keep-hot-readings")
+                .setParallelism(OPERATOR_PARALLELISM)
                 .keyBy(FlinkStringPipeline::roomFrom) // Do you understand why there's a key-by here?
                 .window(SlidingEventTimeWindows.of(
                         Duration.ofMillis(WINDOW_SIZE_MILLIS),
                         Duration.ofMillis(WINDOW_SLIDE_MILLIS)))
                 .process(new AverageStringWindow())
                 .name("average-hot-readings-by-window")
+                .setParallelism(OPERATOR_PARALLELISM)
                 .print()
-                .name("print-window-averages");
+                .name("print-window-averages")
+                .setParallelism(OPERATOR_PARALLELISM);
 
         env.execute("Step 02 - Flink pipeline with String events");
     }
@@ -79,11 +86,7 @@ public final class FlinkStringPipeline {
     }
 
     private static String[] fields(String line) {
-        String[] fields = line.split(",");
-        if (fields.length != 3) {
-            throw new IllegalArgumentException("Expected room,timestamp,temperature but got: " + line);
-        }
-        return fields;
+        return line.split(",");
     }
 
     public static final class AverageStringWindow extends ProcessWindowFunction<String, String, String, TimeWindow> {
@@ -111,7 +114,7 @@ public final class FlinkStringPipeline {
         String room = rooms[(int) (index % rooms.length)];
         long timestampMillis = System.currentTimeMillis();
         double temperature = 20.2 + (index % 5) * 0.7 + (index % 4 == 0 ? 2.0 : 0.0);
-        return String.format(Locale.US, "%s,%d,%.1f", room, timestampMillis, temperature);
+        return String.format(Locale.US, "%s,%d,%.1f", room, timestampMillis, temperature).replace('.', ',');
     }
 
     private static String formatAverage(

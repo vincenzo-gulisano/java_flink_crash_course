@@ -30,7 +30,24 @@ fields[1] = timestamp
 fields[2] = temperature
 ```
 
-Classroom tweak: in `temperatureFrom(...)`, change `fields(line)[2]` to `fields(line)[1]`. The code still compiles, but the job behavior is wrong or fails at runtime.
+Classroom tweak: the source intentionally contains a formatting mistake:
+
+```java
+String.format(Locale.US, "%s,%d,%.1f", room, timestampMillis, temperature).replace('.', ',')
+```
+
+This turns a temperature like `24.3` into `24,3`, so the event has four fields instead of three:
+
+```text
+fields[0] = room
+fields[1] = timestamp
+fields[2] = integer part of the temperature
+fields[3] = decimal part of the temperature
+```
+
+Because this example no longer checks that there are exactly three fields, the job still runs. The rest of the query reads `fields[2]` as the temperature and silently ignores `fields[3]`, so the averages are wrong but the program does not obviously crash.
+
+This is the point of the example: with strings, the data shape is only a convention. In step 03, using a `Tuple3` makes the shape explicit, so accidentally creating four fields instead of three becomes much harder to hide.
 
 Another useful prompt: "Why do we have to call `assignTimestampsAndWatermarks(...)` before using event-time windows?"
 
@@ -49,3 +66,11 @@ Run it locally:
 ```bash
 mvn -pl 02-flink-strings compile exec:exec
 ```
+
+To compare the threads used by step 01 and step 02:
+
+```bash
+./compare-threads.sh
+```
+
+The script compiles each example, starts it as a Java process, prints the overall number of process threads when the operating system exposes it, asks the live JVM to print a thread dump, and then prints the Java thread names from that dump. It stops each example after the inspection to keep the comparison short, and writes the application output and full thread dumps under `target/thread-demo-logs`.
