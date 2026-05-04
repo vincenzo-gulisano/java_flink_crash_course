@@ -60,6 +60,33 @@ Good classroom prompt: "The producer is creating events, so why does the aggrega
 
 **Answer:** This is a lambda expression. It means: "when this thread starts, run the method `produce(rawEvents)`." It is a compact way to pass behavior to the `Thread` constructor.
 
+This works because `Thread` has a constructor that receives a `Runnable`, and `Runnable` has only one abstract method:
+
+```java
+void run();
+```
+
+Interfaces with one abstract method are called functional interfaces, and Java lets us implement them with lambdas. Since `run()` takes no parameters, the lambda starts with empty parentheses:
+
+```java
+() -> produce(rawEvents)
+```
+
+This means: "a function with no parameters that calls `produce(rawEvents)`." The method `produce(...)` does need a parameter, but that parameter is not passed by the thread. Instead, the lambda captures the existing `rawEvents` variable from the surrounding code and uses it later when the thread runs.
+
+It is roughly equivalent to writing:
+
+```java
+Thread producer = new Thread(new Runnable() {
+    @Override
+    public void run() {
+        produce(rawEvents);
+    }
+}, "producer");
+```
+
+The important detail is that `produce(rawEvents)` is not executed immediately. The lambda describes work to do later. The work starts only when we call `producer.start()`.
+
 **Question:** Do you know what `private static` means for a method?
 
 **Answer:** `private` means the method is only callable inside this class. `static` means the method belongs to the class itself, so we can call it without creating an object first.
